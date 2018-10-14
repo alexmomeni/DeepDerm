@@ -1,0 +1,99 @@
+# On the server
+DATA_DIR=/local-scratch/gchhor_scratch/data/
+DATASET_DIR=/local-scratch/gchhor_scratch/data/dataset/
+TRAIN_DIR=/local-scratch/gchhor_scratch/data/train_logs/
+CHECKPOINT_PATH=/local-scratch/gchhor_scratch/data/checkpoints/
+EVAL_DIR=/local-scratch/gchhor_scratch/data/eval/
+VIS_DIR=/local-scratch/gchhor_scratch/data/vis/
+USAGE=testing
+MODEL_NAME=inception_v4
+SCOPE_NAME=InceptionV4
+
+# Locally
+DATA_DIR=data/
+DATASET_DIR=data/dataset/
+TRAIN_DIR=data/train_logs/
+CHECKPOINT_PATH=data/checkpoints/
+MODEL_NAME=inception_v3
+SCOPE_NAME=InceptionV3
+
+# Define GPU to use
+export CUDA_VISIBLE_DEVICES=0
+
+# Download the data
+python datasets/download_data.py \
+	--dataset_dir=${DATA_DIR}
+
+# Clean dataset
+python datasets/clean.py \
+	--dataset_dir=${DATA_DIR}
+
+# Convert to TFRecords
+python datasets/convert_data.py \
+	--dataset_dir=${DATA_DIR}
+    
+# Convert to TFRecords
+python datasets/convert_isic.py \
+	--dataset_dir=${DATA_DIR}
+    
+# Evaluate model
+python visualization.py \
+	--alsologtostderr \
+	--checkpoint_path=${TRAIN_DIR} \
+	--vis_dir=${VIS_DIR} \
+	--dataset_dir=${DATASET_DIR} \
+	--dataset_split_name=validation \
+	--model_name=${MODEL_NAME} \
+
+# Evaluate model
+python eval_image_classifier.py \
+	--alsologtostderr \
+	--checkpoint_path=${TRAIN_DIR} \
+	--eval_dir=${EVAL_DIR} \
+	--dataset_dir=${DATASET_DIR} \
+	--dataset_split_name=validation \
+	--model_name=${MODEL_NAME} \
+	--usage=${USAGE}
+    
+# Evaluate model
+python eval_image_classifier_binary.py \
+	--alsologtostderr \
+	--checkpoint_path=${TRAIN_DIR} \
+	--eval_dir=${EVAL_DIR} \
+	--dataset_dir=${DATASET_DIR} \
+	--dataset_split_name=test_isic \
+	--model_name=${MODEL_NAME} \
+
+
+# Train model from checkpoint
+python train_image_classifier.py \
+	--train_dir=${TRAIN_DIR} \
+	--dataset_split_name=train \
+	--dataset_dir=${DATASET_DIR} \
+	--model_name=${MODEL_NAME} \
+	--checkpoint_path=${CHECKPOINT_PATH} \
+	--checkpoint_exclude_scopes=${SCOPE_NAME}/Logits,${SCOPE_NAME}/AuxLogits \
+	--batch_size=32 \
+	--learning_rate=0.0001 \
+	--learning_rate_decay_type=fixed \
+	--save_interval_secs=300 \
+	--save_summaries_secs=300 \
+	--log_every_n_steps=500 \
+	--optimizer=rmsprop \
+	--weight_decay=0.00004
+
+# Train model from scratch
+python train_image_classifier.py \
+		--train_dir=${TRAIN_DIR} \
+		--dataset_split_name=train \
+		--dataset_dir=${DATASET_DIR} \
+		--model_name=${MODEL_NAME}
+
+ssh -L 16006:127.0.0.1:6006 gchhor@bmir-ct-gpu-5.stanford.edu
+ssh gchhor@bmir-ct-gpu-5.stanford.edu
+tensorboard --logdir=${TRAIN_DIR}/${MODEL_NAME}
+
+jupyter notebook --no-browser --ip=0.0.0.0 --port=8890
+ssh -N -f -L localhost:8890:localhost:8890 gchhor@bmir-ct-gpu-5.stanford.edu
+
+find . -name '.DS_Store' -type f -delete
